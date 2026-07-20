@@ -1,0 +1,21 @@
+name: Site Watcher
+
+on:
+  schedule:
+    - cron: '0 * * * *' # 매시간 정각에 자동 실행
+  workflow_dispatch: # 수동으로 실행할 수 있는 버튼 활성화
+
+jobs:
+  run-watcher:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: 스크립트 실행
+        run: python check_site.py
