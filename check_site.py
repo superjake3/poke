@@ -16,36 +16,44 @@ try:
     
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # Serebii에서 가장 위에 있는 첫 번째 뉴스 테이블(최신 요일)만 정확히 타겟팅
-    first_news_table = soup.find('table', class_='foomain')
+    # [핵심 수정] table 태그로 제한하지 않고, Serebii가 사용하는 모든 뉴스 클래스(div, td, table 등 불문)를 싹 다 찾습니다.
+    news_elements = soup.find_all(class_=['foomain', 'dextable', 'post'])
+    news_text = ""
     
-    if first_news_table:
-        # 주요 텍스트 태그들을 줄바꿈 단위로 정밀 추출
-        paragraphs = first_news_table.find_all(['p', 'div', 'td'])
-        if paragraphs:
-            news_text = "\n".join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+    if news_elements:
+        # 상위 3개 블록의 텍스트를 모아서 오늘의 최신 뉴스 내용을 넉넉하게 확보합니다.
+        extracted_texts = []
+        for elem in news_elements[:3]:
+            text = elem.get_text(separator="\n").strip()
+            if len(text) > 20:  # 너무 짧은 자투리 텍스트는 제외
+                extracted_texts.append(text)
+        news_text = "\n\n".join(extracted_texts)
+    
+    # 만약 위 방식으로도 놓칠 경우를 대비한 최후의 백업 (메인 본문 영역 통째로 추출)
+    if not news_text or len(news_text) < 20:
+        for script in soup(["script", "style", "nav", "footer", "header"]):
+            script.extract()
+        main_area = soup.find(id=['content', 'main', 'page']) or soup.find('main')
+        if main_area:
+            news_text = main_area.get_text(separator="\n").strip()
         else:
-            news_text = first_news_table.get_text(separator="\n").strip()
-    else:
-        news_text = ""
+            news_text = soup.get_text(separator="\n").strip()
 
-    # 텍스트 라인 정리 및 스팸성 문구 필터링
+    # 줄바꿈 및 불필요한 반복 안내문 정제
     lines = [line.strip() for line in news_text.splitlines() if line.strip()]
     cleaned_lines = []
-    
     for line in lines:
-        # 상단 반복 안내 텍스트 제거
         if "This update will be amended" in line:
             continue
         cleaned_lines.append(line)
         
-    # 핵심 상위 25줄 조립
-    final_news = "\n".join(cleaned_lines[:25])
+    # 디스코드 전송을 위해 핵심 상위 30줄만 딱 잘라내기
+    final_news = "\n".join(cleaned_lines[:30])
 
     if not final_news or len(final_news) < 10:
         final_news = "최신 뉴스 텍스트를 추출하는 데 실패했습니다. 사이트 구조를 확인해 주세요."
 
-    # 변경 감지용 해시 (가장 최신 뉴스 덩어리의 내용 기준으로만 비교)
+    # 변경 감지용 해시
     current_hash = hashlib.md5(final_news.encode('utf-8')).hexdigest()
     file_path = "last_hash.txt"
     
@@ -56,9 +64,9 @@ try:
         old_hash = ""
         
     if current_hash != old_hash:
-        print("★ [Serebii] 최신 뉴스 박스 감지! 번역 및 전송 시작 ★")
+        print("★ [Serebii] 최신 뉴스 감지 성공! 번역 및 전송 시작 ★")
         
-        # 글자수 제한 안정권 조절
+        # 글자수 제한 안정권 조절 (디스코드 텍스트 제한 2000자 대비 안전하게 800자)
         if len(final_news) > 800:
             final_news = final_news[:800] + "\n...(이하 생략)..."
         
