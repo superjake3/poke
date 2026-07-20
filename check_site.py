@@ -16,44 +16,56 @@ try:
     
     soup = BeautifulSoup(html_content, 'html.parser')
     
-    # [핵심 수정] table 태그로 제한하지 않고, Serebii가 사용하는 모든 뉴스 클래스(div, td, table 등 불문)를 싹 다 찾습니다.
-    news_elements = soup.find_all(class_=['foomain', 'dextable', 'post'])
-    news_text = ""
+    # 1. 사이트 전체 텍스트 추출 및 줄바꿈 정리
+    raw_text = soup.get_text(separator='\n')
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     
-    if news_elements:
-        # 상위 3개 블록의 텍스트를 모아서 오늘의 최신 뉴스 내용을 넉넉하게 확보합니다.
-        extracted_texts = []
-        for elem in news_elements[:3]:
-            text = elem.get_text(separator="\n").strip()
-            if len(text) > 20:  # 너무 짧은 자투리 텍스트는 제외
-                extracted_texts.append(text)
-        news_text = "\n\n".join(extracted_texts)
+    # 요일 키워드 목록
+    days = ["Monday:", "Tuesday:", "Wednesday:", "Thursday:", "Friday:", "Saturday:", "Sunday:"]
     
-    # 만약 위 방식으로도 놓칠 경우를 대비한 최후의 백업 (메인 본문 영역 통째로 추출)
-    if not news_text or len(news_text) < 20:
-        for script in soup(["script", "style", "nav", "footer", "header"]):
-            script.extract()
-        main_area = soup.find(id=['content', 'main', 'page']) or soup.find('main')
-        if main_area:
-            news_text = main_area.get_text(separator="\n").strip()
-        else:
-            news_text = soup.get_text(separator="\n").strip()
-
-    # 줄바꿈 및 불필요한 반복 안내문 정제
-    lines = [line.strip() for line in news_text.splitlines() if line.strip()]
-    cleaned_lines = []
-    for line in lines:
-        if "This update will be amended" in line:
-            continue
-        cleaned_lines.append(line)
+    start_idx = -1
+    end_idx = len(lines)
+    
+    # 2. 가장 첫 번째로 등장하는 요일(오늘 뉴스 시작점) 찾기
+    for i, line in enumerate(lines):
+        if any(line.startswith(day) for day in days):
+            start_idx = i
+            break
+            
+    # 3. 두 번째로 등장하는 요일(어제 뉴스 시작점)을 찾아 오늘 하루 치 영역만 정확히 잘라내기
+    if start_idx != -1:
+        for i in range(start_idx + 1, len(lines)):
+            if any(lines[i].startswith(day) for day in days):
+                end_idx = i
+                break
         
-    # 디스코드 전송을 위해 핵심 상위 30줄만 딱 잘라내기
-    final_news = "\n".join(cleaned_lines[:30])
+        # 오늘 요일 섹션의 모든 라인을 가져옴 (15줄/30줄 등의 줄 수 제한 없음!)
+        today_lines = lines[start_idx : end_idx]
+        cleaned_lines = []
+        
+        for line in today_lines:
+            # 뉴스와 상관없는 사이트 관리용 반복 문구, 부서명 태그만 깔끔하게 제거
+            if "This update will be amended" in line: continue
+            if line.startswith("Last Update:"): continue
+            if line.startswith("Edit @"): continue
+            if "In The Games Department" in line: continue
+            if "In The Anime Department" in line: continue
+            if "In The Manga Department" in line: continue
+            cleaned_lines.append(line)
+            
+        # 가독성을 위해 문단 사이를 넉넉하게 띄워서 합치기
+        final_news = "\n\n".join(cleaned_lines)
+    else:
+        final_news = ""
 
     if not final_news or len(final_news) < 10:
-        final_news = "최신 뉴스 텍스트를 추출하는 데 실패했습니다. 사이트 구조를 확인해 주세요."
+        final_news = "뉴스 콘텐츠를 스캔하지 못했습니다. 사이트를 직접 확인해 주세요."
 
-    # 변경 감지용 해시
+    # 4. 디스코드 최대 글자 수 한계선(4096자) 에러를 방지하기 위한 넉넉한 안전장치 (3800자)
+    if len(final_news) > 3800:
+        final_news = final_news[:3800] + "\n\n...(디스코드 글자 수 제한으로 이하 생략)..."
+
+    # 변경 감지용 해시 (오늘 자 전체 뉴스 데이터 기준)
     current_hash = hashlib.md5(final_news.encode('utf-8')).hexdigest()
     file_path = "last_hash.txt"
     
@@ -64,24 +76,19 @@ try:
         old_hash = ""
         
     if current_hash != old_hash:
-        print("★ [Serebii] 최신 뉴스 감지 성공! 번역 및 전송 시작 ★")
+        print("★ [Serebii] 오늘 하루 치 전체 뉴스 감지 성공! 번역 시작 ★")
         
-        # 글자수 제한 안정권 조절 (디스코드 텍스트 제한 2000자 대비 안전하게 800자)
-        if len(final_news) > 800:
-            final_news = final_news[:800] + "\n...(이하 생략)..."
-        
-        # 구글 번역
+        # 구글 번역 (대용량 텍스트 번역 수행)
         try:
             translated_text = GoogleTranslator(source='en', target='ko').translate(final_news)
         except Exception as translation_error:
             translated_text = f"번역 중 오류가 발생했습니다.\n\n[원문 미리보기]\n{final_news}"
         
-        # 디스코드 전송
         discord_message = {
-            "content": "📢 **Serebii 최신 포켓몬 뉴스 업데이트!**",
+            "content": "📢 **Serebii 오늘 자 포켓몬 뉴스 전체 업데이트!**",
             "embeds": [
                 {
-                    "title": "오늘의 최신 소식 (자동 번역)",
+                    "title": "오늘의 최신 뉴스 전체 (자동 번역)",
                     "description": f"{translated_text}",
                     "url": "https://www.serebii.net/",
                     "color": 65280
@@ -100,7 +107,7 @@ try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(current_hash)
     else:
-        print("새로운 업데이트 소식이 없습니다.")
+        print("새로운 업데이트가 없습니다.")
 
 except Exception as e:
     print(f"Serebii 체크 중 에러 발생: {e}")
