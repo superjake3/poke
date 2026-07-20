@@ -9,7 +9,7 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 필수: git push 권한 허용
     steps:
       - name: 코드 가져오기
         uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: 필요 라이브러리 설치 (스크랩 & 번역)
+      - name: 필요 라이브러리 설치
         run: |
           pip install beautifulsoup4 deep-translator
 
@@ -33,6 +33,8 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          # Serebii와 포켓몬 GO 모두 업데이트된 파일이 있는지 확인하고 반영
-          git add last_hash.txt pogo_last_id.txt
+          # 파일이 실제로 생성되었을 때만 git add 수행
+          if [ -f last_hash.txt ]; then git add last_hash.txt; fi
+          if [ -f pogo_last_id.txt ]; then git add pogo_last_id.txt; fi
+          # 커밋할 내용이 있을 때만 커밋 및 푸시
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update hashes" && git push)
