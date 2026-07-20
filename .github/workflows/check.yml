@@ -1,21 +1,11 @@
-name: Site Watcher
+import urllib.request
 
-on:
-  schedule:
-    - cron: '0 * * * *' # 매시간 정각에 자동 실행
-  workflow_dispatch: # 수동으로 실행할 수 있는 버튼 활성화
+print("--- 사이트 감시 시스템 가동 ---")
 
-jobs:
-  run-watcher:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 코드 가져오기
-        uses: actions/checkout@v4
-
-      - name: 파이썬 설정
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: 스크립트 실행
-        run: python check_site.py
+# 테스트용으로 네이버 접속 상태를 체크해봅니다.
+try:
+    url = "https://www.naver.com"
+    status = urllib.request.urlopen(url).getcode()
+    print(f"[{url}] 접속 성공! (상태 코드: {status})")
+except Exception as e:
+    print(f"사이트 접속 중 에러 발생: {e}")
