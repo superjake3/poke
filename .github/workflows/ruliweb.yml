@@ -15,8 +15,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 1. Action 오타 수정 (python-python -> setup-python)
       - name: Set up Python
-        uses: actions/python-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -25,9 +26,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
+      # 2. Secret 이름 변경 (FIGURE_DISCORD_WEBHOOK_URL)
       - name: Run Crawler
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.FIGURE_DISCORD_WEBHOOK_URL }}
         run: python check_ruliweb.py
 
       - name: Commit and Push notified IDs
